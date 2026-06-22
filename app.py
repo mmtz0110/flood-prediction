@@ -148,22 +148,61 @@ def show_prediksi(df: pd.DataFrame, model) -> None:
         "month",
     ]
 
+    # allow simple vs advanced input modes
+    mode = st.radio("Pilih mode input:", ["Sederhana (direkomendasikan)", "Lanjutan"], index=0)
+
+    def quantile_value(col: str, level: str):
+        # level in {low, medium, high}
+        if col not in df.columns or not pd.api.types.is_numeric_dtype(df[col]):
+            return 0.0
+        if level == "Low":
+            q = df[col].quantile(0.25)
+        elif level == "Medium":
+            q = df[col].quantile(0.5)
+        else:
+            q = df[col].quantile(0.75)
+        return float(q)
+
+    input_data = {}
+
     with st.form("prediksi"):
-        cols = st.columns(2)
-        input_data = {}
+        if mode.startswith("Sederhana"):
+            c1, c2 = st.columns(2)
+            rain = c1.selectbox("Curah hujan", ["Low", "Medium", "High"], index=1)
+            temp = c1.selectbox("Suhu rata-rata", ["Low", "Medium", "High"], index=1)
+            elev = c2.selectbox("Ketinggian", ["Low", "Medium", "High"], index=1)
+            soil = c2.selectbox("Kelembaban tanah", ["Low", "Medium", "High"], index=1)
+            slope_sel = c1.selectbox("Kemiringan tanah", ["Flat", "Gentle", "Steep"], index=1)
+            month_sel = c2.selectbox("Bulan", list(range(1, 13)), index=0)
+            # landcover simplified
+            land_opt = list(df["landcover_class"].dropna().unique()) if "landcover_class" in df.columns else ["Built-up", "Tree cover"]
+            land = c1.selectbox("Tipe lahan (landcover)", land_opt)
 
-        # numeric inputs
-        for i, feat in enumerate(numeric_features):
-            default = float(df[feat].mean()) if feat in df.columns else 0.0
-            input_data[feat] = cols[i % 2].number_input(feat, value=default)
+            # map simple selections to numeric features
+            input_data["avg_rainfall"] = quantile_value("avg_rainfall", rain)
+            input_data["max_rainfall"] = quantile_value("max_rainfall", rain)
+            input_data["avg_temperature"] = quantile_value("avg_temperature", temp)
+            input_data["elevation"] = quantile_value("elevation", elev)
+            input_data["soil_moisture"] = quantile_value("soil_moisture", soil)
+            # map slope
+            slope_map = {"Flat": 0.2, "Gentle": 3.0, "Steep": 7.0}
+            input_data["slope"] = slope_map.get(slope_sel, 1.0)
+            input_data["month"] = int(month_sel)
+            input_data["ndvi"] = quantile_value("ndvi", "Medium")
+            input_data["landcover_class"] = land
+        else:
+            # advanced: show numeric fields
+            cols = st.columns(2)
+            for i, feat in enumerate(numeric_features):
+                default = float(df[feat].mean()) if feat in df.columns else 0.0
+                input_data[feat] = cols[i % 2].number_input(feat, value=default)
 
-        # categorical inputs
-        for cat in categorical_features:
-            if cat in df.columns:
-                options = list(df[cat].dropna().unique())
-                input_data[cat] = st.selectbox(cat, options)
-            else:
-                input_data[cat] = "Unknown"
+            for cat in categorical_features:
+                if cat in df.columns:
+                    options = list(df[cat].dropna().unique())
+                    input_data[cat] = st.selectbox(cat, options)
+                else:
+                    input_data[cat] = "Unknown"
 
         submit = st.form_submit_button("Prediksi")
 
@@ -171,7 +210,7 @@ def show_prediksi(df: pd.DataFrame, model) -> None:
         input_df = pd.DataFrame([input_data])
 
         if model is None:
-            st.error("Model belum tersedia. Silakan latih model terlebih dahulu pada tab 'Evaluasi' atau gunakan tombol 'Latih Model' di sidebar.")
+            st.error("Model belum tersedia. Aplikasi sedang melatih model otomatis atau tekan 'Latih Model' di sidebar.")
             return
 
         try:
@@ -303,13 +342,26 @@ def main() -> None:
     try:
         model = load_model("model.pkl")
     except Exception:
-        logger.warning("Model not found or failed to load; prediction/evaluation disabled.")
+        logger.warning("Model not found or failed to load; training will start automatically.")
         model = None
 
     render_header()
     selected, train_requested = render_sidebar()
 
-    # if user requested training from sidebar
+    # Auto-train if model not available (on app start)
+    if model is None:
+        with st.spinner("Model tidak ditemukan — melatih model secara otomatis, mohon tunggu..."):
+            try:
+                pipeline, acc, report = train_and_save_model(df)
+                st.success(f"Auto-training selesai — akurasi: {acc:.3f}")
+                st.text("Classification report:")
+                st.text(report)
+                model = pipeline
+            except Exception as e:
+                st.error(f"Auto-training gagal: {e}")
+                model = None
+
+    # if user requested training from sidebar, allow re-training
     if train_requested:
         with st.spinner("Melatih model... Ini mungkin memakan waktu beberapa detik"):
             try:
