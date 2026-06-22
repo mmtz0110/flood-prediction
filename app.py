@@ -7,6 +7,13 @@ import matplotlib.pyplot as plt
 import plotly.express as px
 from streamlit_option_menu import option_menu
 
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.pipeline import Pipeline
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score, classification_report
+
 st.set_page_config(page_title="Flood Prediction Dashboard", page_icon="🌊", layout="wide")
 
 logging.basicConfig(level=logging.INFO)
@@ -71,7 +78,7 @@ def render_header() -> None:
     )
 
 
-def render_sidebar() -> str:
+def render_sidebar():
     with st.sidebar:
         try:
             st.image("assets/logo.png", width=120)
@@ -86,7 +93,10 @@ def render_sidebar() -> str:
             default_index=0,
         )
 
-    return selected
+        st.markdown("---")
+        train_btn = st.button("Latih Model (Train model)")
+
+    return selected, train_btn
 
 
 def show_dashboard(df: pd.DataFrame) -> None:
@@ -125,19 +135,45 @@ def show_visualisasi(df: pd.DataFrame) -> None:
 
 def show_prediksi(df: pd.DataFrame, model) -> None:
     st.subheader("🌧️ Prediksi Risiko Banjir")
+    # define features to use for prediction
+    categorical_features = ["landcover_class"]
+    numeric_features = [
+        "avg_rainfall",
+        "max_rainfall",
+        "avg_temperature",
+        "elevation",
+        "ndvi",
+        "slope",
+        "soil_moisture",
+        "month",
+    ]
 
     with st.form("prediksi"):
-        fitur = {}
         cols = st.columns(2)
+        input_data = {}
 
-        for i, col in enumerate(df.columns[:-1]):
-            default = float(df[col].mean()) if pd.api.types.is_numeric_dtype(df[col]) else 0.0
-            fitur[col] = cols[i % 2].number_input(col, value=default)
+        # numeric inputs
+        for i, feat in enumerate(numeric_features):
+            default = float(df[feat].mean()) if feat in df.columns else 0.0
+            input_data[feat] = cols[i % 2].number_input(feat, value=default)
+
+        # categorical inputs
+        for cat in categorical_features:
+            if cat in df.columns:
+                options = list(df[cat].dropna().unique())
+                input_data[cat] = st.selectbox(cat, options)
+            else:
+                input_data[cat] = "Unknown"
 
         submit = st.form_submit_button("Prediksi")
 
     if submit:
-        input_df = pd.DataFrame([fitur])
+        input_df = pd.DataFrame([input_data])
+
+        if model is None:
+            st.error("Model belum tersedia. Silakan latih model terlebih dahulu pada tab 'Evaluasi' atau gunakan tombol 'Latih Model' di sidebar.")
+            return
+
         try:
             hasil = model.predict(input_df)[0]
         except Exception as e:
@@ -150,15 +186,102 @@ def show_prediksi(df: pd.DataFrame, model) -> None:
             st.success("✅ Risiko Banjir Rendah")
 
 
+def train_and_save_model(df: pd.DataFrame, model_path: str = "model.pkl"):
+    """Simple training pipeline: one-hot encode categorical, scale numeric, train RandomForest."""
+    # ensure target exists
+    if "banjir" not in df.columns:
+        raise ValueError("Target column 'banjir' not found in dataset")
+
+    # features
+    cat_feats = ["landcover_class"]
+    num_feats = [
+        "avg_rainfall",
+        "max_rainfall",
+        "avg_temperature",
+        "elevation",
+        "ndvi",
+        "slope",
+        "soil_moisture",
+        "month",
+    ]
+
+    available_num = [c for c in num_feats if c in df.columns]
+    available_cat = [c for c in cat_feats if c in df.columns]
+
+    X = df[available_num + available_cat].copy()
+    y = df["banjir"].astype(int)
+
+    # simple preprocessing
+    transformers = []
+    if available_num:
+        transformers.append(("num", StandardScaler(), available_num))
+    if available_cat:
+        transformers.append(("cat", OneHotEncoder(handle_unknown="ignore"), available_cat))
+
+    preprocessor = ColumnTransformer(transformers=transformers, remainder="drop")
+
+    pipeline = Pipeline(
+        steps=[("preproc", preprocessor), ("clf", RandomForestClassifier(n_estimators=100, random_state=42))]
+    )
+
+    X_train, X_test, y_train, y_test = train_test_split(X, y, stratify=y, test_size=0.2, random_state=42)
+    pipeline.fit(X_train, y_train)
+
+    y_pred = pipeline.predict(X_test)
+    acc = accuracy_score(y_test, y_pred)
+
+    # save
+    joblib.dump(pipeline, model_path)
+
+    return pipeline, acc, classification_report(y_test, y_pred)
+
+
 def show_evaluasi(df: pd.DataFrame, model) -> None:
     st.subheader("🎯 Feature Importance")
     try:
-        importances = getattr(model, "feature_importances_", None)
+        # Try to extract feature importances from pipeline or estimator
+        if hasattr(model, "named_steps") and "clf" in model.named_steps:
+            importances = model.named_steps["clf"].feature_importances_
+        else:
+            importances = getattr(model, "feature_importances_", None)
+
         if importances is None:
             st.info("Model does not expose `feature_importances_`.")
             return
 
-        importance = pd.DataFrame({"Feature": df.columns[:-1], "Importance": importances})
+        # build feature names consistent with training preprocessing
+        num_feats = [
+            "avg_rainfall",
+            "max_rainfall",
+            "avg_temperature",
+            "elevation",
+            "ndvi",
+            "slope",
+            "soil_moisture",
+            "month",
+        ]
+        cat_feats = ["landcover_class"]
+
+        available_num = [c for c in num_feats if c in df.columns]
+        available_cat = [c for c in cat_feats if c in df.columns]
+
+        feature_names = []
+        feature_names.extend(available_num)
+        # expand categorical as one-hot names using observed categories
+        for cat in available_cat:
+            cats = list(df[cat].dropna().unique())
+            cats = [str(x) for x in cats]
+            cats_sorted = sorted(cats)
+            feature_names.extend([f"{cat}__{v}" for v in cats_sorted])
+
+        # trim or pad feature names to match importances length
+        if len(feature_names) > len(importances):
+            feature_names = feature_names[: len(importances)]
+        elif len(feature_names) < len(importances):
+            # pad with generic names
+            feature_names.extend([f"f_{i}" for i in range(len(importances) - len(feature_names))])
+
+        importance = pd.DataFrame({"Feature": feature_names, "Importance": importances})
         importance = importance.sort_values(by="Importance", ascending=False)
 
         fig = px.bar(importance.head(10), x="Importance", y="Feature", orientation="h", title="Top 10 Feature Importance")
@@ -184,7 +307,19 @@ def main() -> None:
         model = None
 
     render_header()
-    selected = render_sidebar()
+    selected, train_requested = render_sidebar()
+
+    # if user requested training from sidebar
+    if train_requested:
+        with st.spinner("Melatih model... Ini mungkin memakan waktu beberapa detik"):
+            try:
+                pipeline, acc, report = train_and_save_model(df)
+                st.success(f"Training selesai — akurasi: {acc:.3f}")
+                st.text("Classification report:")
+                st.text(report)
+                model = pipeline
+            except Exception as e:
+                st.error(f"Training gagal: {e}")
 
     if selected == "Dashboard":
         show_dashboard(df)
