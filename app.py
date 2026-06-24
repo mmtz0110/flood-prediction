@@ -33,7 +33,6 @@ CSS = """
 .hero{
     padding:30px;
     border-radius:20px;
-    background: linear-gradient(135deg,#0f172a,#2563eb);
     color:white;
     text-align:center;
 }
