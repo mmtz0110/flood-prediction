@@ -65,10 +65,7 @@ def render_header() -> None:
 
     st.markdown(CSS, unsafe_allow_html=True)
 
-    st.markdown("""
-    <div class="hero">
-    </div>
-    """,unsafe_allow_html=True,)
+    st.markdown("<div class="hero"></div>",unsafe_allow_html=True,)
 
 
 def render_sidebar():
