@@ -66,7 +66,7 @@ def render_header() -> None:
 
     st.markdown(CSS, unsafe_allow_html=True)
 
-    st.markdown(unsafe_allow_html=True)
+    st.markdown(unsafe_allow_html=True,)
 
 
 def render_sidebar():
