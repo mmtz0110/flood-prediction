@@ -68,9 +68,6 @@ def render_header() -> None:
 
     st.markdown("""
     <div class="hero">
-    <h1>Flood Prediction Dashboard</h1>
-    <p>Analisis Pola Banjir Menggunakan Machine Learning</p>
-    <p>SDG 13 • Climate Action • Flood Mitigation</p>
     </div>
     """,unsafe_allow_html=True,)
 
