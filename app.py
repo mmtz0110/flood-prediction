@@ -14,7 +14,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, classification_report
 
-st.set_page_config(page_title="Flood Prediction Dashboard", page_icon="🌊", layout="wide")
+st.set_page_config(page_title="Flood Prediction Dashboard", layout="wide")
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -69,7 +69,7 @@ def render_header() -> None:
     st.markdown(
         """
     <div class="hero">
-    <h1>🌊 Flood Prediction Dashboard</h1>
+    <h1>Flood Prediction Dashboard</h1>
     <p>Analisis Pola Banjir Menggunakan Machine Learning</p>
     <p>SDG 13 • Climate Action • Flood Mitigation</p>
     </div>
@@ -100,7 +100,7 @@ def render_sidebar():
 
 
 def show_dashboard(df: pd.DataFrame) -> None:
-    st.subheader("📊 Ringkasan Dataset")
+    st.subheader("Ringkasan Dataset")
 
     col1, col2, col3, col4 = st.columns(4)
 
@@ -121,20 +121,20 @@ def show_dataset(df: pd.DataFrame) -> None:
 
 
 def show_visualisasi(df: pd.DataFrame) -> None:
-    st.subheader("📈 Distribusi Data")
+    st.subheader("Distribusi Data")
     target_col = df.columns[-1]
 
     fig = px.histogram(df, x=target_col, color=target_col, title="Distribusi Data Banjir")
     st.plotly_chart(fig, use_container_width=True)
 
-    st.subheader("🔥 Correlation Heatmap")
+    st.subheader("Correlation Heatmap")
     fig2, ax = plt.subplots(figsize=(12, 7))
     sns.heatmap(df.corr(numeric_only=True), cmap="RdBu_r", annot=True, ax=ax)
     st.pyplot(fig2)
 
 
 def show_prediksi(df: pd.DataFrame, model) -> None:
-    st.subheader("🌧️ Prediksi Risiko Banjir")
+    st.subheader("Prediksi Risiko Banjir")
     # define features to use for prediction
     categorical_features = ["landcover_class"]
     numeric_features = [
@@ -220,9 +220,9 @@ def show_prediksi(df: pd.DataFrame, model) -> None:
             return
 
         if int(hasil) == 1:
-            st.error("⚠️ Potensi Banjir Tinggi")
+            st.error("Potensi Banjir Tinggi")
         else:
-            st.success("✅ Risiko Banjir Rendah")
+            st.success("Risiko Banjir Rendah")
 
 
 def train_and_save_model(df: pd.DataFrame, model_path: str = "model.pkl"):
@@ -276,7 +276,7 @@ def train_and_save_model(df: pd.DataFrame, model_path: str = "model.pkl"):
 
 
 def show_evaluasi(df: pd.DataFrame, model) -> None:
-    st.subheader("🎯 Feature Importance")
+    st.subheader("Feature Importance")
     try:
         # Try to extract feature importances from pipeline or estimator
         if hasattr(model, "named_steps") and "clf" in model.named_steps:
@@ -330,7 +330,7 @@ def show_evaluasi(df: pd.DataFrame, model) -> None:
 
 
 def main() -> None:
-    st.title("🌊 Flood Prediction Dashboard")
+    st.title("Flood Prediction Dashboard")
 
     # Load resources
     try:
